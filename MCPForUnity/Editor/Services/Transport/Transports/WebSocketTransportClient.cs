@@ -610,12 +610,15 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 return;
             }
 
+            McpLog.Debug($"[WebSocket] Received execute: '{commandName}' (cmdId={commandId}, timeout={timeoutSeconds}s)");
+
             var commandEnvelope = new JObject
             {
                 ["type"] = commandName,
                 ["params"] = parameters
             };
 
+            var execSw = System.Diagnostics.Stopwatch.StartNew();
             string responseJson;
             try
             {
@@ -625,6 +628,8 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
             }
             catch (OperationCanceledException)
             {
+                execSw.Stop();
+                McpLog.Warn($"[WebSocket] Command '{commandName}' timed out after {timeoutSeconds}s (elapsed={execSw.ElapsedMilliseconds}ms, cmdId={commandId})");
                 responseJson = JsonConvert.SerializeObject(new
                 {
                     status = "error",
@@ -654,12 +659,20 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 };
             }
 
+            execSw.Stop();
+            var responseJsonPreview = responseJson?.Length > 300 ? responseJson[..300] + "..." : responseJson;
+            McpLog.Debug($"[WebSocket] responseJson for '{commandName}': {responseJsonPreview}");
+
             var responsePayload = new JObject
             {
                 ["type"] = "command_result",
                 ["id"] = commandId,
                 ["result"] = resultToken
             };
+
+            var payloadJson = responsePayload.ToString(Newtonsoft.Json.Formatting.None);
+            var payloadPreview = payloadJson.Length > 400 ? payloadJson[..400] + "..." : payloadJson;
+            McpLog.Debug($"[WebSocket] Final payload for '{commandName}' (cmdId={commandId}, elapsed={execSw.ElapsedMilliseconds}ms): {payloadPreview}");
 
             await SendJsonAsync(responsePayload, token).ConfigureAwait(false);
         }

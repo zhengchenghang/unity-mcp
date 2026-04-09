@@ -57,6 +57,16 @@ namespace MCPForUnity.Editor.Tools.Profiler
                     case "frame_debugger_get_events":
                         return FrameDebuggerOps.GetEvents(@params);
 
+                    // Profile Data Analysis
+                    case "load_profile":
+                        return ProfilerDataOps.LoadProfile(@params);
+                    case "get_profile_summary":
+                        return ProfilerDataOps.GetProfileSummary(@params);
+                    case "get_frame_hierarchy":
+                        return ProfilerDataOps.GetFrameHierarchy(@params);
+                    case "get_hotspots":
+                        return ProfilerDataOps.GetHotspots(@params);
+
                     // Utility
                     case "ping":
                         return new SuccessResponse("manage_profiler is available.", new
@@ -72,6 +82,7 @@ namespace MCPForUnity.Editor.Tools.Profiler
                             + "get_frame_timing, get_counters, get_object_memory, "
                             + "memory_take_snapshot, memory_list_snapshots, memory_compare_snapshots, "
                             + "frame_debugger_enable, frame_debugger_disable, frame_debugger_get_events, "
+                            + "load_profile, get_profile_summary, get_frame_hierarchy, get_hotspots, "
                             + "ping.");
                 }
             }

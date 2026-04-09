@@ -143,7 +143,7 @@ namespace MCPForUnity.Editor.Helpers
                 {
                     if (unity[kvp.Key] == null)
                     {
-                        unity[kvp.Key] = kvp.Value != null ? JToken.FromObject(kvp.Value) : JValue.CreateNull();
+                        unity[kvp.Key] = McpSerializer.ToJToken(kvp.Value);
                     }
                 }
             }

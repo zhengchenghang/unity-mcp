@@ -267,12 +267,22 @@ namespace MCPForUnity.Editor.Tools
 
         // ──────────────────── CodeDom compiler ────────────────────
 
+        // Threshold for switching to response file (Windows cmd line limit is ~32K)
+        private const int MaxCommandLineLength = 25000;
+
         private static Assembly CodeDomCompile(string source, string[] assemblyPaths, out List<string> errors)
         {
             errors = new List<string>();
 
             // CodeDom needs the netstandard-aware filtered paths
             var filtered = FilterAssemblyPathsForCodeDom(assemblyPaths);
+
+            // Estimate command line length: each ref adds /r:"path" + space
+            int estimatedCmdLen = 0;
+            foreach (var path in filtered)
+                estimatedCmdLen += path.Length + 6;
+
+            string rspFile = null;
 
             using (var provider = new CSharpCodeProvider())
             {
@@ -283,25 +293,48 @@ namespace MCPForUnity.Editor.Tools
                     TreatWarningsAsErrors = false,
                 };
 
-                foreach (var path in filtered)
-                    parameters.ReferencedAssemblies.Add(path);
-
-                var results = provider.CompileAssemblyFromSource(parameters, source);
-
-                if (results.Errors.HasErrors)
+                // Use a response file to avoid Windows command line length limit
+                if (estimatedCmdLen > MaxCommandLineLength)
                 {
-                    foreach (CompilerError error in results.Errors)
-                    {
-                        if (!error.IsWarning)
-                        {
-                            int userLine = Math.Max(1, error.Line - WrapperLineOffset);
-                            errors.Add($"Line {userLine}: {error.ErrorText}");
-                        }
-                    }
-                    return null;
+                    rspFile = Path.Combine(Path.GetTempPath(), $"mcp_codedom_{Guid.NewGuid():N}.rsp");
+                    var sb = new StringBuilder();
+                    foreach (var path in filtered)
+                        sb.AppendLine($"/r:\"{path}\"");
+                    File.WriteAllText(rspFile, sb.ToString());
+                    parameters.CompilerOptions = $"@\"{rspFile}\"";
+                }
+                else
+                {
+                    foreach (var path in filtered)
+                        parameters.ReferencedAssemblies.Add(path);
                 }
 
-                return results.CompiledAssembly;
+                try
+                {
+                    var results = provider.CompileAssemblyFromSource(parameters, source);
+
+                    if (results.Errors.HasErrors)
+                    {
+                        foreach (CompilerError error in results.Errors)
+                        {
+                            if (!error.IsWarning)
+                            {
+                                int userLine = Math.Max(1, error.Line - WrapperLineOffset);
+                                errors.Add($"Line {userLine}: {error.ErrorText}");
+                            }
+                        }
+                        return null;
+                    }
+
+                    return results.CompiledAssembly;
+                }
+                finally
+                {
+                    if (rspFile != null)
+                    {
+                        try { File.Delete(rspFile); } catch { }
+                    }
+                }
             }
         }
 
@@ -429,7 +462,7 @@ namespace MCPForUnity.Editor.Tools
 
             try
             {
-                return JToken.FromObject(result);
+                return McpSerializer.ToJToken(result);
             }
             catch
             {

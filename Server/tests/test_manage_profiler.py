@@ -13,6 +13,7 @@ from services.tools.manage_profiler import (
     COUNTER_ACTIONS,
     MEMORY_SNAPSHOT_ACTIONS,
     FRAME_DEBUGGER_ACTIONS,
+    PROFILE_DATA_ACTIONS,
     UTILITY_ACTIONS,
 )
 
@@ -48,7 +49,7 @@ def mock_unity(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_profiler_actions_count():
-    assert len(ALL_ACTIONS) == 14
+    assert len(ALL_ACTIONS) == 18
 
 
 def test_no_duplicate_actions():
@@ -75,12 +76,21 @@ def test_frame_debugger_actions():
     assert set(FRAME_DEBUGGER_ACTIONS) == expected
 
 
+def test_profile_data_actions():
+    expected = {"load_profile", "get_profile_summary", "get_frame_hierarchy", "get_hotspots"}
+    assert set(PROFILE_DATA_ACTIONS) == expected
+
+
 def test_utility_actions():
     assert UTILITY_ACTIONS == ["ping"]
 
 
 def test_all_actions_is_union():
-    expected = set(UTILITY_ACTIONS + SESSION_ACTIONS + COUNTER_ACTIONS + MEMORY_SNAPSHOT_ACTIONS + FRAME_DEBUGGER_ACTIONS)
+    expected = set(
+        UTILITY_ACTIONS + SESSION_ACTIONS + COUNTER_ACTIONS
+        + MEMORY_SNAPSHOT_ACTIONS + FRAME_DEBUGGER_ACTIONS
+        + PROFILE_DATA_ACTIONS
+    )
     assert set(ALL_ACTIONS) == expected
 
 
@@ -116,6 +126,7 @@ def test_empty_action_returns_error(mock_unity):
     "get_frame_timing", "get_counters", "get_object_memory",
     "memory_take_snapshot", "memory_list_snapshots", "memory_compare_snapshots",
     "frame_debugger_enable", "frame_debugger_disable", "frame_debugger_get_events",
+    "load_profile", "get_profile_summary", "get_frame_hierarchy", "get_hotspots",
 ])
 def test_every_action_forwards_to_unity(mock_unity, action_name):
     result = asyncio.run(
@@ -227,6 +238,84 @@ def test_frame_debugger_get_events_forwards_paging(mock_unity):
     assert result["success"] is True
     assert mock_unity["params"]["page_size"] == 25
     assert mock_unity["params"]["cursor"] == 50
+
+
+# --- Profile Data Analysis param forwarding ---
+
+def test_load_profile_forwards_file_path(mock_unity):
+    result = asyncio.run(
+        manage_profiler(SimpleNamespace(), action="load_profile", file_path="/tmp/profile.raw")
+    )
+    assert result["success"] is True
+    assert mock_unity["params"]["file_path"] == "/tmp/profile.raw"
+
+
+def test_get_profile_summary_forwards_frame_range(mock_unity):
+    result = asyncio.run(
+        manage_profiler(
+            SimpleNamespace(), action="get_profile_summary",
+            frame_start=10, frame_end=100, page_size=30,
+        )
+    )
+    assert result["success"] is True
+    assert mock_unity["params"]["frame_start"] == 10
+    assert mock_unity["params"]["frame_end"] == 100
+    assert mock_unity["params"]["page_size"] == 30
+
+
+def test_get_frame_hierarchy_forwards_all_params(mock_unity):
+    result = asyncio.run(
+        manage_profiler(
+            SimpleNamespace(), action="get_frame_hierarchy",
+            frame_index=42, thread_index=1, depth=3,
+            min_time_ms=0.5, sort_by="self_time", page_size=20, cursor=10,
+        )
+    )
+    assert result["success"] is True
+    p = mock_unity["params"]
+    assert p["frame_index"] == 42
+    assert p["thread_index"] == 1
+    assert p["depth"] == 3
+    assert p["min_time_ms"] == 0.5
+    assert p["sort_by"] == "self_time"
+    assert p["page_size"] == 20
+    assert p["cursor"] == 10
+
+
+def test_get_hotspots_forwards_params(mock_unity):
+    result = asyncio.run(
+        manage_profiler(
+            SimpleNamespace(), action="get_hotspots",
+            frame_start=0, frame_end=299, top_n=10,
+            sort_by="gc_alloc", thread_index=0,
+        )
+    )
+    assert result["success"] is True
+    p = mock_unity["params"]
+    assert p["top_n"] == 10
+    assert p["sort_by"] == "gc_alloc"
+    assert p["frame_start"] == 0
+    assert p["frame_end"] == 299
+    assert p["thread_index"] == 0
+
+
+def test_get_profile_summary_omits_none_frame_range(mock_unity):
+    result = asyncio.run(
+        manage_profiler(SimpleNamespace(), action="get_profile_summary")
+    )
+    assert result["success"] is True
+    assert "frame_start" not in mock_unity["params"]
+    assert "frame_end" not in mock_unity["params"]
+
+
+def test_get_hotspots_omits_none_optional_params(mock_unity):
+    result = asyncio.run(
+        manage_profiler(SimpleNamespace(), action="get_hotspots")
+    )
+    assert result["success"] is True
+    assert "frame_start" not in mock_unity["params"]
+    assert "top_n" not in mock_unity["params"]
+    assert "sort_by" not in mock_unity["params"]
 
 
 def test_action_only_params_no_extras(mock_unity):

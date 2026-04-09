@@ -208,6 +208,13 @@ class PluginHub(WebSocketEndpoint):
             elif message_type == "pong":
                 await self._handle_pong(PongMessage(**data))
             elif message_type == "command_result":
+                raw_result = data.get("result")
+                logger.info(
+                    "[PluginHub] Raw command_result received (id=%s, result_type=%s, result_keys=%s): %s",
+                    data.get("id"), type(raw_result).__name__,
+                    list(raw_result.keys()) if isinstance(raw_result, dict) else "N/A",
+                    str(raw_result)[:300] if raw_result else "EMPTY/NONE",
+                )
                 await self._handle_command_result(CommandResultMessage(**data))
             else:
                 logger.debug(f"Ignoring plugin message: {data}")
@@ -303,12 +310,17 @@ class PluginHub(WebSocketEndpoint):
             cls._pending[command_id] = {
                 "future": future, "session_id": session_id}
 
+        t_start = time.monotonic()
         try:
             msg = ExecuteCommandMessage(
                 id=command_id,
                 name=command_type,
                 params=params,
                 timeout=unity_timeout_s,
+            )
+            logger.info(
+                "[PluginHub] Sending command '%s' (id=%s, unity_timeout=%.1fs, server_wait=%.1fs)",
+                command_type, command_id, unity_timeout_s, server_wait_s,
             )
             try:
                 await websocket.send_json(msg.model_dump())
@@ -319,10 +331,27 @@ class PluginHub(WebSocketEndpoint):
                 raise
             try:
                 result = await asyncio.wait_for(future, timeout=server_wait_s)
+                elapsed = time.monotonic() - t_start
+                # 截断 result 避免日志过大
+                result_preview = repr(result)[:200] if result is not None else "None"
+                logger.info(
+                    "[PluginHub] Command '%s' completed in %.3fs (id=%s): %s",
+                    command_type, elapsed, command_id, result_preview,
+                )
                 return result
             except PluginDisconnectedError as exc:
+                elapsed = time.monotonic() - t_start
+                logger.warning(
+                    "[PluginHub] Command '%s' disconnected after %.3fs (id=%s): %s",
+                    command_type, elapsed, command_id, exc,
+                )
                 return MCPResponse(success=False, error=str(exc), hint="retry").model_dump()
             except asyncio.TimeoutError:
+                elapsed = time.monotonic() - t_start
+                logger.warning(
+                    "[PluginHub] Command '%s' timed out after %.3fs (id=%s, limit=%.1fs)",
+                    command_type, elapsed, command_id, server_wait_s,
+                )
                 if command_type in cls._FAST_FAIL_COMMANDS:
                     return MCPResponse(
                         success=False,
@@ -644,7 +673,16 @@ class PluginHub(WebSocketEndpoint):
             entry = cls._pending.get(command_id)
         future = entry.get("future") if isinstance(entry, dict) else None
         if future and not future.done():
+            logger.info(
+                "[PluginHub] Setting future result (id=%s, result_type=%s, truthy=%s): %s",
+                command_id, type(result).__name__, bool(result), repr(result)[:200],
+            )
             future.set_result(result)
+            logger.info("[PluginHub] Resolved future for command id=%s", command_id)
+        elif future and future.done():
+            logger.warning("[PluginHub] Command result arrived but future already done (id=%s)", command_id)
+        else:
+            logger.warning("[PluginHub] Command result arrived but no pending future (id=%s)", command_id)
 
     async def _handle_pong(self, payload: PongMessage) -> None:
         cls = type(self)

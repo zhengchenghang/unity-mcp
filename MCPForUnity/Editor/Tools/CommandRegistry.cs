@@ -372,8 +372,12 @@ namespace MCPForUnity.Editor.Tools
         {
             try
             {
-                var response = new { status = "success", result };
-                string json = JsonConvert.SerializeObject(response);
+                var response = new JObject
+                {
+                    ["status"] = "success",
+                    ["result"] = McpSerializer.ToJToken(result)
+                };
+                string json = response.ToString(Newtonsoft.Json.Formatting.None);
 
                 if (!tcs.TrySetResult(json))
                 {
@@ -398,18 +402,18 @@ namespace MCPForUnity.Editor.Tools
         {
             McpLog.Error($"Error in async command '{commandName}': {ex.Message}\n{ex.StackTrace}");
 
-            var errorResponse = new
+            var errorResponse = new JObject
             {
-                status = "error",
-                error = ex.Message,
-                command = commandName,
-                stackTrace = ex.StackTrace
+                ["status"] = "error",
+                ["error"] = ex.Message,
+                ["command"] = commandName,
+                ["stackTrace"] = ex.StackTrace
             };
 
             string json;
             try
             {
-                json = JsonConvert.SerializeObject(errorResponse);
+                json = errorResponse.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception serializationEx)
             {

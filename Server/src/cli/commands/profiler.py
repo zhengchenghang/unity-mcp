@@ -168,3 +168,82 @@ def frame_debugger_events(page_size, cursor):
         params["cursor"] = cursor
     result = run_command("manage_profiler", params, config)
     click.echo(format_output(result, config.format))
+
+
+# --- Profile Data Analysis ---
+
+@profiler.command("load-profile")
+@click.option("--file", "file_path", required=True, help="Path to .raw profiler recording.")
+@handle_unity_errors
+def load_profile(file_path):
+    """Load a recorded .raw profiler file for analysis."""
+    config = get_config()
+    result = run_command("manage_profiler", {"action": "load_profile", "file_path": file_path}, config)
+    click.echo(format_output(result, config.format))
+
+
+@profiler.command("profile-summary")
+@click.option("--frame-start", default=None, type=int, help="Start frame index.")
+@click.option("--frame-end", default=None, type=int, help="End frame index.")
+@click.option("--page-size", default=50, type=int, help="Frames per page.")
+@click.option("--cursor", default=None, type=int, help="Cursor offset.")
+@handle_unity_errors
+def profile_summary(frame_start, frame_end, page_size, cursor):
+    """Get per-frame timing summary from loaded profile."""
+    config = get_config()
+    params = {"action": "get_profile_summary", "page_size": page_size}
+    if frame_start is not None:
+        params["frame_start"] = frame_start
+    if frame_end is not None:
+        params["frame_end"] = frame_end
+    if cursor is not None:
+        params["cursor"] = cursor
+    result = run_command("manage_profiler", params, config)
+    click.echo(format_output(result, config.format))
+
+
+@profiler.command("frame-hierarchy")
+@click.option("--frame", "frame_index", required=True, type=int, help="Frame index to inspect.")
+@click.option("--thread", "thread_index", default=0, type=int, help="Thread index (0=main).")
+@click.option("--depth", default=5, type=int, help="Max hierarchy depth.")
+@click.option("--min-time", "min_time_ms", default=None, type=float, help="Min time threshold (ms).")
+@click.option("--sort-by", default="total_time", help="Sort: total_time, self_time, calls, gc_alloc.")
+@click.option("--page-size", default=50, type=int, help="Items per page.")
+@click.option("--cursor", default=None, type=int, help="Cursor offset.")
+@handle_unity_errors
+def frame_hierarchy(frame_index, thread_index, depth, min_time_ms, sort_by, page_size, cursor):
+    """Get function call hierarchy for a specific frame."""
+    config = get_config()
+    params = {
+        "action": "get_frame_hierarchy",
+        "frame_index": frame_index, "thread_index": thread_index,
+        "depth": depth, "sort_by": sort_by, "page_size": page_size,
+    }
+    if min_time_ms is not None:
+        params["min_time_ms"] = min_time_ms
+    if cursor is not None:
+        params["cursor"] = cursor
+    result = run_command("manage_profiler", params, config)
+    click.echo(format_output(result, config.format))
+
+
+@profiler.command("hotspots")
+@click.option("--frame-start", default=None, type=int, help="Start frame index.")
+@click.option("--frame-end", default=None, type=int, help="End frame index.")
+@click.option("--top-n", default=20, type=int, help="Number of top functions (max 100).")
+@click.option("--sort-by", default="self_time", help="Sort: total_time, self_time, calls, gc_alloc.")
+@click.option("--thread", "thread_index", default=0, type=int, help="Thread index (0=main).")
+@handle_unity_errors
+def hotspots(frame_start, frame_end, top_n, sort_by, thread_index):
+    """Get top-N hotspot functions across frame range."""
+    config = get_config()
+    params = {
+        "action": "get_hotspots", "top_n": top_n,
+        "sort_by": sort_by, "thread_index": thread_index,
+    }
+    if frame_start is not None:
+        params["frame_start"] = frame_start
+    if frame_end is not None:
+        params["frame_end"] = frame_end
+    result = run_command("manage_profiler", params, config)
+    click.echo(format_output(result, config.format))

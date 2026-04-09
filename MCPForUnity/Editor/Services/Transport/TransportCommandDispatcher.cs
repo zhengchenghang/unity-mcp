@@ -110,6 +110,8 @@ namespace MCPForUnity.Editor.Services.Transport
                 Pending[id] = pending;
             }
 
+            McpLog.Debug($"[Dispatcher] Command queued (id={id}, pending={PendingCount}): {TruncateForLog(commandJson, 120)}");
+
             // Proactively wake up the main thread execution loop. This improves responsiveness
             // in scenarios where EditorApplication.update is throttled or temporarily not firing
             // (e.g., Unity unfocused, compiling, or during domain reload transitions).
@@ -239,15 +241,22 @@ namespace MCPForUnity.Editor.Services.Transport
                 }
 
                 ready = new List<(string, PendingCommand)>(Pending.Count);
+                int executingCount = 0;
                 foreach (var kvp in Pending)
                 {
                     if (kvp.Value.IsExecuting)
                     {
+                        executingCount++;
                         continue;
                     }
 
                     kvp.Value.IsExecuting = true;
                     ready.Add((kvp.Key, kvp.Value));
+                }
+
+                if (ready.Count > 0 || executingCount > 0)
+                {
+                    McpLog.Debug($"[Dispatcher] ProcessQueue: {ready.Count} new, {executingCount} already executing, {Pending.Count} total pending");
                 }
 
                 if (ready.Count == 0)
@@ -272,10 +281,14 @@ namespace MCPForUnity.Editor.Services.Transport
         {
             if (pending.CancellationToken.IsCancellationRequested)
             {
+                McpLog.Debug($"[Dispatcher] Command cancelled before execution (id={id}, waited={(DateTime.UtcNow - pending.QueuedAt).TotalMilliseconds:F0}ms)");
                 RemovePending(id, pending);
                 pending.TrySetCanceled();
                 return;
             }
+
+            var waitTime = (DateTime.UtcNow - pending.QueuedAt).TotalMilliseconds;
+            McpLog.Debug($"[Dispatcher] Processing command (id={id}, queueWait={waitTime:F0}ms)");
 
             string commandText = pending.CommandJson?.Trim();
             if (string.IsNullOrEmpty(commandText))
@@ -287,25 +300,25 @@ namespace MCPForUnity.Editor.Services.Transport
 
             if (string.Equals(commandText, "ping", StringComparison.OrdinalIgnoreCase))
             {
-                var pingResponse = new
+                var pingResponse = new JObject
                 {
-                    status = "success",
-                    result = new { message = "pong" }
+                    ["status"] = "success",
+                    ["result"] = new JObject { ["message"] = "pong" }
                 };
-                pending.TrySetResult(JsonConvert.SerializeObject(pingResponse));
+                pending.TrySetResult(pingResponse.ToString(Formatting.None));
                 RemovePending(id, pending);
                 return;
             }
 
             if (!IsValidJson(commandText))
             {
-                var invalidJsonResponse = new
+                var invalidJsonResponse = new JObject
                 {
-                    status = "error",
-                    error = "Invalid JSON format",
-                    receivedText = commandText.Length > 50 ? commandText[..50] + "..." : commandText
+                    ["status"] = "error",
+                    ["error"] = "Invalid JSON format",
+                    ["receivedText"] = commandText.Length > 50 ? commandText[..50] + "..." : commandText
                 };
-                pending.TrySetResult(JsonConvert.SerializeObject(invalidJsonResponse));
+                pending.TrySetResult(invalidJsonResponse.ToString(Formatting.None));
                 RemovePending(id, pending);
                 return;
             }
@@ -329,12 +342,12 @@ namespace MCPForUnity.Editor.Services.Transport
 
                 if (string.Equals(command.type, "ping", StringComparison.OrdinalIgnoreCase))
                 {
-                    var pingResponse = new
+                    var pingResponse = new JObject
                     {
-                        status = "success",
-                        result = new { message = "pong" }
+                        ["status"] = "success",
+                        ["result"] = new JObject { ["message"] = "pong" }
                     };
-                    pending.TrySetResult(JsonConvert.SerializeObject(pingResponse));
+                    pending.TrySetResult(pingResponse.ToString(Formatting.None));
                     RemovePending(id, pending);
                     return;
                 }
@@ -362,18 +375,20 @@ namespace MCPForUnity.Editor.Services.Transport
                 }
 
                 var logType = resourceMeta != null ? "resource" : toolMeta != null ? "tool" : "unknown";
-                var sw = McpLogRecord.IsEnabled ? System.Diagnostics.Stopwatch.StartNew() : null;
+                McpLog.Debug($"[Dispatcher] Executing {logType} '{command.type}' (id={id})");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var result = CommandRegistry.ExecuteCommand(command.type, parameters, pending.CompletionSource);
 
                 if (result == null)
                 {
                     // Async command – cleanup after completion on next editor frame to preserve order.
+                    McpLog.Debug($"[Dispatcher] Async command '{command.type}' dispatched, awaiting result (id={id})");
                     var capturedType = command.type;
                     var capturedParams = parameters;
                     var capturedLogType = logType;
                     pending.CompletionSource.Task.ContinueWith(t =>
                     {
-                        sw?.Stop();
+                        sw.Stop();
                         var logStatus = "SUCCESS";
                         string logError = null;
                         if (t.IsFaulted)
@@ -394,14 +409,15 @@ namespace MCPForUnity.Editor.Services.Transport
                             }
                             catch { }
                         }
+                        McpLog.Debug($"[Dispatcher] Async command '{capturedType}' completed in {sw.ElapsedMilliseconds}ms (status={logStatus})");
                         McpLogRecord.Log(capturedType, capturedParams, capturedLogType,
-                            logStatus, sw?.ElapsedMilliseconds ?? 0, logError);
+                            logStatus, sw.ElapsedMilliseconds, logError);
                         EditorApplication.delayCall += () => RemovePending(id, pending);
                     }, TaskScheduler.Default);
                     return;
                 }
 
-                sw?.Stop();
+                sw.Stop();
 
                 string syncLogStatus = "SUCCESS";
                 string syncLogError = null;
@@ -410,10 +426,15 @@ namespace MCPForUnity.Editor.Services.Transport
                     syncLogStatus = "ERROR";
                     syncLogError = errResp.Error;
                 }
-                McpLogRecord.Log(command.type, parameters, logType, syncLogStatus, sw?.ElapsedMilliseconds ?? 0, syncLogError);
+                McpLog.Debug($"[Dispatcher] Sync command '{command.type}' completed in {sw.ElapsedMilliseconds}ms (status={syncLogStatus})");
+                McpLogRecord.Log(command.type, parameters, logType, syncLogStatus, sw.ElapsedMilliseconds, syncLogError);
 
-                var response = new { status = "success", result };
-                pending.TrySetResult(JsonConvert.SerializeObject(response));
+                var response = new JObject
+                {
+                    ["status"] = "success",
+                    ["result"] = McpSerializer.ToJToken(result)
+                };
+                pending.TrySetResult(response.ToString(Formatting.None));
                 RemovePending(id, pending);
             }
             catch (Exception ex)
@@ -452,14 +473,26 @@ namespace MCPForUnity.Editor.Services.Transport
 
         private static string SerializeError(string message, string commandType = null, string stackTrace = null)
         {
-            var errorResponse = new
+            var errorResponse = new JObject
             {
-                status = "error",
-                error = message,
-                command = commandType ?? "Unknown",
-                stackTrace
+                ["status"] = "error",
+                ["error"] = message,
+                ["command"] = commandType ?? "Unknown",
+                ["stackTrace"] = stackTrace
             };
-            return JsonConvert.SerializeObject(errorResponse);
+            return errorResponse.ToString(Formatting.None);
+        }
+
+        private static int PendingCount
+        {
+            get { lock (PendingLock) { return Pending.Count; } }
+        }
+
+        private static string TruncateForLog(string text, int maxLength)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+                return text;
+            return text[..maxLength] + "...";
         }
 
         private static bool IsValidJson(string text)

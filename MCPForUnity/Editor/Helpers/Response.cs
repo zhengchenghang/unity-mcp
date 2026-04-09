@@ -1,7 +1,27 @@
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace MCPForUnity.Editor.Helpers
 {
+    /// <summary>
+    /// Provides a JsonSerializer that ignores JsonConvert.DefaultSettings,
+    /// preventing third-party plugins from contaminating MCP serialization.
+    /// </summary>
+    public static class McpSerializer
+    {
+        private static readonly JsonSerializer _clean = JsonSerializer.Create(new JsonSerializerSettings());
+
+        /// <summary>
+        /// Converts an object to JToken using a clean serializer,
+        /// immune to global JsonConvert.DefaultSettings pollution.
+        /// </summary>
+        public static JToken ToJToken(object value)
+        {
+            if (value == null) return JValue.CreateNull();
+            return JToken.FromObject(value, _clean);
+        }
+    }
+
     public interface IMcpResponse
     {
         [JsonProperty("success")]
