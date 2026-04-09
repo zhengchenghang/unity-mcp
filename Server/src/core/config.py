@@ -57,6 +57,10 @@ class ServerConfig:
     # Port discovery cache
     port_registry_ttl: float = 5.0
 
+    # Result cache (large tool response caching)
+    result_cache_ttl: float = 300.0        # seconds before cached entries expire
+    result_cache_max_entries: int = 50     # max entries per session
+
     # Telemetry settings
     telemetry_enabled: bool = True
     # Align with telemetry.py default Cloud Run endpoint

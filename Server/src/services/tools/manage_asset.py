@@ -115,5 +115,10 @@ async def manage_asset(
 
     # Use centralized async retry helper with instance routing
     result = await send_with_unity_instance(async_send_command_with_retry, unity_instance, "manage_asset", params_dict, loop=loop)
-    # Return the result obtained from Unity
-    return result if isinstance(result, dict) else {"success": False, "message": str(result)}
+    if not isinstance(result, dict):
+        return {"success": False, "message": str(result)}
+    # Cache large search results to save AI context tokens
+    if action_l == "search" and result.get("success"):
+        from services.result_cache import cache_if_large
+        return await cache_if_large(result, ctx, source_tool="manage_asset", source_action="search")
+    return result

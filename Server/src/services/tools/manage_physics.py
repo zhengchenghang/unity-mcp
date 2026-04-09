@@ -259,4 +259,10 @@ async def manage_physics(
     result = await send_with_unity_instance(
         async_send_command_with_retry, unity_instance, "manage_physics", params_dict
     )
-    return result if isinstance(result, dict) else {"success": False, "message": str(result)}
+    if not isinstance(result, dict):
+        return {"success": False, "message": str(result)}
+    # Cache large validation results to save AI context tokens
+    if action_lower == "validate" and result.get("success"):
+        from services.result_cache import cache_if_large
+        return await cache_if_large(result, ctx, source_tool="manage_physics", source_action="validate")
+    return result

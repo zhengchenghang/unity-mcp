@@ -214,6 +214,8 @@ MCP for Unity 支持多个 Unity Editor 实例。要将操作定向到某个特�
 
 开发环境设置见 [README-DEV.md](../development/README-DEV.md)。自定义工具见 [CUSTOM_TOOLS.md](../reference/CUSTOM_TOOLS.md)。
 
+> **注意：** 如果你本地有完整的仓库代码，建议在 MCP for Unity 高级设置中将 **Server Source Override** 指向本地 `Server/` 目录路径。这样可以确保始终使用本地最新的服务器代码，而非 PyPI 上可能滞后的发布版本。
+
 1. Fork → 创建 issue → 新建分支（`feature/your-idea`）→ 修改 → 提 PR
 </details>
 

@@ -94,8 +94,13 @@ async def execute_code(
     if not isinstance(response, dict):
         return {"success": False, "message": str(response)}
 
-    return {
+    friendly = {
         "success": response.get("success", False),
         "message": response.get("message", response.get("error", "")),
         "data": response.get("data"),
     }
+    # Cache large execution outputs to save AI context tokens
+    if action == "execute" and friendly.get("success"):
+        from services.result_cache import cache_if_large
+        return await cache_if_large(friendly, ctx, source_tool="execute_code", source_action="execute")
+    return friendly

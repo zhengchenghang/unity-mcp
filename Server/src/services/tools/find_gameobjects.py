@@ -105,11 +105,13 @@ async def find_gameobjects(
         )
 
         if isinstance(response, dict) and response.get("success"):
-            return {
+            friendly = {
                 "success": True,
                 "message": response.get("message", "Search completed."),
                 "data": response.get("data")
             }
+            from services.result_cache import cache_if_large
+            return await cache_if_large(friendly, ctx, source_tool="find_gameobjects")
         return response if isinstance(response, dict) else {"success": False, "message": str(response)}
 
     except Exception as e:

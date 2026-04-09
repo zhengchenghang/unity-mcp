@@ -427,8 +427,8 @@ namespace MCPForUnity.Editor.Helpers
 
         /// <summary>
         /// Determines whether uvx should use --no-cache --refresh flags.
-        /// Returns true if DevModeForceServerRefresh is enabled OR if the server URL is a local path.
-        /// Local paths (file:// or absolute) always need fresh builds to avoid stale uvx cache.
+        /// Returns true if DevModeForceServerRefresh is enabled, or if the local server
+        /// source files have changed since the last build (fingerprint mismatch).
         /// Note: --reinstall is not supported by uvx and will cause a warning.
         /// </summary>
         public static bool ShouldForceUvxRefresh()
@@ -439,8 +439,69 @@ namespace MCPForUnity.Editor.Helpers
             if (devForceRefresh)
                 return true;
 
-            // Auto-enable force refresh when using a local path override.
-            return IsLocalServerPath();
+            // For local paths, only force refresh when source files actually changed.
+            if (IsLocalServerPath())
+                return HasLocalServerSourceChanged();
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks whether local server source files have changed since the last recorded fingerprint.
+        /// Returns true if files changed or if no previous fingerprint exists (first run).
+        /// When changes are detected, automatically updates the stored fingerprint.
+        /// </summary>
+        private static bool HasLocalServerSourceChanged()
+        {
+            string localPath = GetLocalServerPath();
+            if (string.IsNullOrEmpty(localPath) || !System.IO.Directory.Exists(localPath))
+                return true;
+
+            string currentFingerprint = ComputeLocalServerSourceFingerprint(localPath);
+            if (string.IsNullOrEmpty(currentFingerprint))
+                return true;
+
+            string storedFingerprint = EditorPrefs.GetString(EditorPrefKeys.LocalServerSourceFingerprint, "");
+            if (currentFingerprint == storedFingerprint)
+                return false;
+
+            // Source changed — update fingerprint for next comparison
+            EditorPrefs.SetString(EditorPrefKeys.LocalServerSourceFingerprint, currentFingerprint);
+            return true;
+        }
+
+        /// <summary>
+        /// Computes a fingerprint for the local server source directory based on
+        /// the most recent modification time of .py files and pyproject.toml.
+        /// </summary>
+        private static string ComputeLocalServerSourceFingerprint(string localPath)
+        {
+            try
+            {
+                long maxTicks = 0;
+
+                // Check all .py files recursively
+                foreach (string file in System.IO.Directory.GetFiles(localPath, "*.py", System.IO.SearchOption.AllDirectories))
+                {
+                    long ticks = System.IO.File.GetLastWriteTimeUtc(file).Ticks;
+                    if (ticks > maxTicks) maxTicks = ticks;
+                }
+
+                // Also check pyproject.toml for dependency changes
+                string pyproject = System.IO.Path.Combine(localPath, "pyproject.toml");
+                if (System.IO.File.Exists(pyproject))
+                {
+                    long ticks = System.IO.File.GetLastWriteTimeUtc(pyproject).Ticks;
+                    if (ticks > maxTicks) maxTicks = ticks;
+                }
+
+                return maxTicks > 0 ? maxTicks.ToString() : null;
+            }
+            catch (Exception ex)
+            {
+                McpLog.Warn($"Failed to compute local server source fingerprint: {ex.Message}");
+                return null;
+            }
         }
 
         private static bool _offlineCacheResult;

@@ -145,4 +145,10 @@ async def read_console(
                 _strip_stacktrace_from_list(data)
         except Exception:
             pass
-    return resp if isinstance(resp, dict) else {"success": False, "message": str(resp)}
+    if not isinstance(resp, dict):
+        return {"success": False, "message": str(resp)}
+    # Cache large console outputs to save AI context tokens
+    if action == "get" and resp.get("success"):
+        from services.result_cache import cache_if_large
+        return await cache_if_large(resp, ctx, source_tool="read_console", source_action="get")
+    return resp

@@ -222,6 +222,8 @@ Still stuck? [Open an Issue](https://github.com/CoplayDev/unity-mcp/issues) or [
 
 See [README-DEV.md](docs/development/README-DEV.md) for development setup. For custom tools, see [CUSTOM_TOOLS.md](docs/reference/CUSTOM_TOOLS.md).
 
+> **Note:** If you have the full repository cloned locally, set **Server Source Override** in MCP for Unity Advanced Settings to your local `Server/` directory path. This ensures you always run the latest server code from your local copy instead of the PyPI-published version, which may be outdated.
+
 1. Fork → Create issue → Branch (`feature/your-idea`) → Make changes → PR
 </details>
 

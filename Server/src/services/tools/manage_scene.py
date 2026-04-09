@@ -152,6 +152,10 @@ async def manage_scene(
         # Preserve structured failure data; unwrap success into a friendlier shape
         if isinstance(response, dict) and response.get("success"):
             friendly = {"success": True, "message": response.get("message", "Scene operation successful."), "data": response.get("data")}
+            # Cache large hierarchy/validation results to save AI context tokens
+            if action in ("get_hierarchy", "validate"):
+                from services.result_cache import cache_if_large
+                return await cache_if_large(friendly, ctx, source_tool="manage_scene", source_action=action)
             return friendly
         return response if isinstance(response, dict) else {"success": False, "message": str(response)}
 
