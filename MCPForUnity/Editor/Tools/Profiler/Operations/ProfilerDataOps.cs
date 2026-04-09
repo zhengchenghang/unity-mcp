@@ -51,8 +51,9 @@ namespace MCPForUnity.Editor.Tools.Profiler
 
                 var flags = BindingFlags.Public | BindingFlags.Static;
 
-                // LoadProfile(string path)
+                // LoadProfile — signature varies: (string) in older Unity, (string, bool) in newer
                 LoadProfileMethod = ProfilerDriverType.GetMethod("LoadProfile", flags, null, new[] { typeof(string) }, null)
+                                 ?? ProfilerDriverType.GetMethod("LoadProfile", flags, null, new[] { typeof(string), typeof(bool) }, null)
                                  ?? ProfilerDriverType.GetMethod("Load", flags, null, new[] { typeof(string) }, null);
 
                 // firstFrameIndex / lastFrameIndex
@@ -61,9 +62,16 @@ namespace MCPForUnity.Editor.Tools.Profiler
                 LastFrameIndexProp = ProfilerDriverType.GetProperty("lastFrameIndex", flags)
                                   ?? ProfilerDriverType.GetProperty("LastFrameIndex", flags);
 
-                // GetHierarchyFrameDataView(int frameIndex, int threadIndex, int viewMode, int sortColumn, bool sortAscending)
+                // GetHierarchyFrameDataView(int frameIndex, int threadIndex, int/enum viewMode, int sortColumn, bool sortAscending)
+                // Try exact int signature first, then fall back to name+param-count lookup
+                // (some Unity versions use an enum for viewMode instead of int)
                 GetHierarchyViewMethod = ProfilerDriverType.GetMethod("GetHierarchyFrameDataView", flags, null,
                     new[] { typeof(int), typeof(int), typeof(int), typeof(int), typeof(bool) }, null);
+                if (GetHierarchyViewMethod == null)
+                {
+                    GetHierarchyViewMethod = ProfilerDriverType.GetMethods(flags)
+                        .FirstOrDefault(m => m.Name == "GetHierarchyFrameDataView" && m.GetParameters().Length == 5);
+                }
 
                 Available = LoadProfileMethod != null && FirstFrameIndexProp != null && LastFrameIndexProp != null;
                 HierarchyAvailable = Available && GetHierarchyViewMethod != null;
@@ -126,8 +134,10 @@ namespace MCPForUnity.Editor.Tools.Profiler
 
         #region Helpers
 
-        private static int GetFirstFrame() => (int)FirstFrameIndexProp.GetValue(null);
-        private static int GetLastFrame() => (int)LastFrameIndexProp.GetValue(null);
+        // API frame indices are offset by -1 from the Profiler window display frame numbers.
+        // We expose display frame numbers externally and convert at the API boundary.
+        private static int GetFirstFrame() => (int)FirstFrameIndexProp.GetValue(null) + 1;
+        private static int GetLastFrame() => (int)LastFrameIndexProp.GetValue(null) + 1;
 
         /// <summary>
         /// Get a HierarchyFrameDataView via reflected ProfilerDriver. Caller must Dispose.
@@ -135,9 +145,16 @@ namespace MCPForUnity.Editor.Tools.Profiler
         /// </summary>
         private static HierarchyFrameDataView GetHierarchyView(int frameIndex, int threadIndex, int sortColumn)
         {
+            // Convert display frame number to API index
+            int apiFrameIndex = frameIndex - 1;
+
+            // Adapt viewMode arg: pass int 0 or convert to enum depending on the reflected signature
+            var viewModeParamType = GetHierarchyViewMethod.GetParameters()[2].ParameterType;
+            object viewModeArg = viewModeParamType.IsEnum ? Enum.ToObject(viewModeParamType, 0) : (object)0;
+
             var viewObj = GetHierarchyViewMethod.Invoke(null, new object[]
             {
-                frameIndex, threadIndex, /*viewMode*/ 0, sortColumn, /*ascending*/ false
+                apiFrameIndex, threadIndex, viewModeArg, sortColumn, /*ascending*/ false
             });
 
             if (viewObj is HierarchyFrameDataView view)
@@ -196,7 +213,11 @@ namespace MCPForUnity.Editor.Tools.Profiler
 
             try
             {
-                LoadProfileMethod.Invoke(null, new object[] { filePath });
+                // Adapt to (string) or (string, bool) signature
+                var loadArgs = LoadProfileMethod.GetParameters().Length == 2
+                    ? new object[] { filePath, false }
+                    : new object[] { filePath };
+                LoadProfileMethod.Invoke(null, loadArgs);
             }
             catch (Exception ex)
             {
