@@ -22,6 +22,7 @@ Complete reference for all MCP tools. Each tool includes parameters, types, and 
 - [ProBuilder Tools](#probuilder-tools)
 - [Profiler Tools](#profiler-tools)
 - [Docs Tools](#docs-tools)
+- [Project Settings Tools](#project-settings-tools)
 
 ---
 
@@ -1609,4 +1610,57 @@ unity_docs(action="lookup", queries="Physics.Raycast,NavMeshAgent,Light2D")
 # Lookup with package docs included
 unity_docs(action="lookup", query="VolumeProfile",
            package="com.unity.render-pipelines.universal", pkg_version="17.0")
+```
+
+---
+
+## Project Settings Tools
+
+### `manage_project_settings`
+
+Read and write Unity ProjectSettings by category. Extensible category system — add new categories by implementing `ICategoryHandler` on the C# side.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | `list_categories`, `list_properties`, `get_settings`, `set_settings` |
+| `category` | string | For get/set/list_properties | Settings category name (e.g. `"version_control"`) |
+| `settings` | dict | For set_settings | Key-value pairs to write |
+
+**Actions:**
+
+- **`list_categories`**: List all supported settings categories with descriptions and property counts. No extra parameters needed.
+- **`list_properties`**: List all properties for a category, including type, valid values, and current value.
+- **`get_settings`**: Read all settings for a category. Returns current values.
+- **`set_settings`**: Write settings. Pass a `settings` dict with property names as keys. Validates all keys before applying any changes — unknown keys cause an error with no modifications.
+
+### Category: `version_control`
+
+| Property | Type | Valid Values | Description |
+|----------|------|-------------|-------------|
+| `mode` | string | `"Visible Meta Files"`, `"Hidden Meta Files"`, `"Perforce"`, `"PlasticSCM"` | Version control mode |
+| `serialization_mode` | enum | `"ForceText"`, `"ForceBinary"`, `"Mixed"` | Asset serialization mode |
+
+```python
+# List available categories
+manage_project_settings(action="list_categories")
+
+# List properties with current values
+manage_project_settings(action="list_properties", category="version_control")
+
+# Read current version control settings
+manage_project_settings(action="get_settings", category="version_control")
+
+# Set VCS mode to Perforce
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"mode": "Perforce"})
+
+# Set asset serialization to Force Text
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"serialization_mode": "ForceText"})
+
+# Set multiple properties at once
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"mode": "Visible Meta Files", "serialization_mode": "ForceText"})
 ```
