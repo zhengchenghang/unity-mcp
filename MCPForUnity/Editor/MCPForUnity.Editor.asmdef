@@ -4,7 +4,8 @@
     "references": [
         "MCPForUnity.Runtime",
         "UnityEngine.UI",
-        "UnityEditor.UI"
+        "UnityEditor.UI",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"
@@ -16,6 +17,12 @@
     ],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.inputsystem",
+            "expression": "1.0.0",
+            "define": "MCP_HAS_INPUT_SYSTEM"
+        }
+    ],
     "noEngineReferences": false
 }
