@@ -589,28 +589,9 @@ namespace MCPForUnity.Editor.Tools
                     }
                 }
 
-                // When a specific camera is requested or include_image is true, always use camera-based capture
-                // (synchronous, gives us bytes in memory for base64).
-                if (targetCamera != null || includeImage)
+                // When a specific camera is requested, use camera-based capture (renders that camera's POV).
+                if (targetCamera != null)
                 {
-                    if (targetCamera == null)
-                    {
-                        targetCamera = Camera.main;
-                        if (targetCamera == null)
-                        {
-#if UNITY_2022_2_OR_NEWER
-                            var allCams = UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
-#else
-                            var allCams = UnityEngine.Object.FindObjectsOfType<Camera>();
-#endif
-                            targetCamera = allCams.Length > 0 ? allCams[0] : null;
-                        }
-                    }
-                    if (targetCamera == null)
-                    {
-                        return new ErrorResponse("No camera found in the scene. Add a Camera to use screenshot with camera or include_image.");
-                    }
-
                     if (!Application.isBatchMode) EnsureGameView();
 
                     ScreenshotCaptureResult result = ScreenshotUtility.CaptureFromCameraToAssetsFolder(
@@ -636,6 +617,89 @@ namespace MCPForUnity.Editor.Tools
                         data["imageHeight"] = result.ImageHeight;
                     }
                     return new SuccessResponse(message, data);
+                }
+
+                // include_image without a specific camera: use Game View GrabPixels to capture the full
+                // rendered frame including Canvas UI overlays. Falls back to Camera.Render if unavailable.
+                if (includeImage)
+                {
+                    if (!Application.isBatchMode)
+                    {
+                        try
+                        {
+                            EnsureGameView();
+                            int vw, vh;
+                            ScreenshotCaptureResult gvResult = EditorWindowScreenshotUtility.CaptureGameViewToAssets(
+                                fileName, resolvedSuperSize, ensureUniqueFileName: true,
+                                includeImage: true, maxResolution: maxResolution,
+                                out vw, out vh);
+
+                            AssetDatabase.ImportAsset(gvResult.AssetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
+
+                            var gvData = new Dictionary<string, object>
+                            {
+                                { "path", gvResult.AssetsRelativePath },
+                                { "fullPath", gvResult.FullPath },
+                                { "superSize", gvResult.SuperSize },
+                                { "isAsync", false },
+                                { "captureSource", "game_view" },
+                                { "viewportWidth", vw },
+                                { "viewportHeight", vh },
+                            };
+                            if (gvResult.ImageBase64 != null)
+                            {
+                                gvData["imageBase64"] = gvResult.ImageBase64;
+                                gvData["imageWidth"] = gvResult.ImageWidth;
+                                gvData["imageHeight"] = gvResult.ImageHeight;
+                            }
+                            return new SuccessResponse(
+                                $"Screenshot captured to '{gvResult.AssetsRelativePath}' (Game View grab, includes UI).", gvData);
+                        }
+                        catch (Exception ex)
+                        {
+                            McpLog.Debug($"[ManageScene] Game View GrabPixels failed, falling back to Camera.Render: {ex.Message}");
+                        }
+                    }
+
+                    // Fallback: camera-based capture (no Canvas UI in Screen Space Overlay mode)
+                    Camera fallbackCam = Camera.main;
+                    if (fallbackCam == null)
+                    {
+#if UNITY_2022_2_OR_NEWER
+                        var allCams = UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+#else
+                        var allCams = UnityEngine.Object.FindObjectsOfType<Camera>();
+#endif
+                        fallbackCam = allCams.Length > 0 ? allCams[0] : null;
+                    }
+                    if (fallbackCam == null)
+                    {
+                        return new ErrorResponse("No camera found in the scene. Add a Camera to use screenshot with include_image.");
+                    }
+
+                    ScreenshotCaptureResult fbResult = ScreenshotUtility.CaptureFromCameraToAssetsFolder(
+                        fallbackCam, fileName, resolvedSuperSize, ensureUniqueFileName: true,
+                        includeImage: true, maxResolution: maxResolution);
+
+                    AssetDatabase.ImportAsset(fbResult.AssetsRelativePath, ImportAssetOptions.ForceSynchronousImport);
+
+                    var fbData = new Dictionary<string, object>
+                    {
+                        { "path", fbResult.AssetsRelativePath },
+                        { "fullPath", fbResult.FullPath },
+                        { "superSize", fbResult.SuperSize },
+                        { "isAsync", false },
+                        { "camera", fallbackCam.name },
+                        { "captureSource", "game_view" },
+                    };
+                    if (fbResult.ImageBase64 != null)
+                    {
+                        fbData["imageBase64"] = fbResult.ImageBase64;
+                        fbData["imageWidth"] = fbResult.ImageWidth;
+                        fbData["imageHeight"] = fbResult.ImageHeight;
+                    }
+                    return new SuccessResponse(
+                        $"Screenshot captured to '{fbResult.AssetsRelativePath}' (camera: {fallbackCam.name}, UI overlays may not be visible).", fbData);
                 }
 
                 // Default path: use ScreenCapture API if available, camera fallback otherwise

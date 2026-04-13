@@ -114,6 +114,106 @@ namespace MCPForUnity.Editor.Helpers
             }
         }
 
+        /// <summary>
+        /// Captures the Game View window via GrabPixels, which includes Canvas UI overlays
+        /// that Camera.Render misses. Falls back to null if Game View is unavailable.
+        /// </summary>
+        public static ScreenshotCaptureResult CaptureGameViewToAssets(
+            string fileName,
+            int superSize,
+            bool ensureUniqueFileName,
+            bool includeImage,
+            int maxResolution,
+            out int viewportWidth,
+            out int viewportHeight)
+        {
+            var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
+            if (gameViewType == null)
+                throw new InvalidOperationException("GameView type not found.");
+
+            var gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
+            if (gameView == null)
+                throw new InvalidOperationException("No Game View window available.");
+
+            FocusAndRepaintWindow(gameView);
+
+            float ppp = EditorGUIUtility.pixelsPerPoint;
+            Rect pos = gameView.position;
+            int width = Mathf.RoundToInt(pos.width * ppp);
+            int height = Mathf.RoundToInt(pos.height * ppp);
+            if (width <= 0 || height <= 0)
+                throw new InvalidOperationException("Game View has zero size.");
+
+            viewportWidth = width;
+            viewportHeight = height;
+
+            Texture2D captured = null;
+            Texture2D downscaled = null;
+            try
+            {
+                var pixelRect = new Rect(0, 0, width, height);
+                captured = CaptureWindowRect(gameView, pixelRect);
+
+                var result = PrepareCaptureResult(fileName, Mathf.Max(1, superSize), ensureUniqueFileName);
+                byte[] png = captured.EncodeToPNG();
+                File.WriteAllBytes(result.FullPath, png);
+
+                if (includeImage)
+                {
+                    int targetMax = maxResolution > 0 ? maxResolution : 640;
+                    string imageBase64;
+                    int imageWidth, imageHeight;
+
+                    if (captured.width > targetMax || captured.height > targetMax)
+                    {
+                        downscaled = ScreenshotUtility.DownscaleTexture(captured, targetMax);
+                        imageBase64 = Convert.ToBase64String(downscaled.EncodeToPNG());
+                        imageWidth = downscaled.width;
+                        imageHeight = downscaled.height;
+                    }
+                    else
+                    {
+                        imageBase64 = Convert.ToBase64String(png);
+                        imageWidth = captured.width;
+                        imageHeight = captured.height;
+                    }
+
+                    return new ScreenshotCaptureResult(
+                        result.FullPath, result.AssetsRelativePath, result.SuperSize, false,
+                        imageBase64, imageWidth, imageHeight);
+                }
+
+                return result;
+            }
+            finally
+            {
+                DestroyTexture(captured);
+                DestroyTexture(downscaled);
+            }
+        }
+
+        private static void FocusAndRepaintWindow(EditorWindow window)
+        {
+            try { window.Focus(); }
+            catch (Exception ex)
+            {
+                McpLog.Debug($"[EditorWindowScreenshotUtility] Window focus failed: {ex.Message}");
+            }
+
+            try
+            {
+                window.Repaint();
+                InvokeMethodIfExists(window, "RepaintImmediately");
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+                EditorApplication.QueuePlayerLoopUpdate();
+                Thread.Sleep(RepaintSettlingDelayMs);
+            }
+            catch (Exception ex)
+            {
+                McpLog.Debug($"[EditorWindowScreenshotUtility] Window repaint failed: {ex.Message}");
+            }
+        }
+
         private static void FocusAndRepaint(SceneView sceneView)
         {
             try
@@ -179,9 +279,17 @@ namespace MCPForUnity.Editor.Helpers
 
         private static Texture2D CaptureViewRect(SceneView sceneView, Rect viewportRectPixels)
         {
-            object hostView = GetHostView(sceneView);
+            return CaptureWindowRect(sceneView, viewportRectPixels);
+        }
+
+        /// <summary>
+        /// Grabs raw pixels from any EditorWindow via GrabPixels reflection.
+        /// </summary>
+        private static Texture2D CaptureWindowRect(EditorWindow window, Rect pixelRect)
+        {
+            object hostView = GetHostView(window);
             if (hostView == null)
-                throw new InvalidOperationException("Failed to resolve Scene view host view.");
+                throw new InvalidOperationException("Failed to resolve editor window host view.");
 
             // GrabPixels is an internal extern on GUIView (parent of HostView), present since at least Unity 2021.1.
             // See: UnityCsReference/Editor/Mono/GUIView.bindings.cs — `internal extern void GrabPixels(RenderTexture, Rect)`
@@ -196,8 +304,8 @@ namespace MCPForUnity.Editor.Helpers
             if (grabPixels == null)
                 throw new MissingMethodException($"{hostView.GetType().FullName}.GrabPixels(RenderTexture, Rect)");
 
-            int width = Mathf.RoundToInt(viewportRectPixels.width);
-            int height = Mathf.RoundToInt(viewportRectPixels.height);
+            int width = Mathf.RoundToInt(pixelRect.width);
+            int height = Mathf.RoundToInt(pixelRect.height);
 
             RenderTexture rt = null;
             RenderTexture previousActive = RenderTexture.active;
@@ -211,7 +319,7 @@ namespace MCPForUnity.Editor.Helpers
                 };
                 rt.Create();
 
-                grabPixels.Invoke(hostView, new object[] { rt, viewportRectPixels });
+                grabPixels.Invoke(hostView, new object[] { rt, pixelRect });
 
                 RenderTexture.active = rt;
                 var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
