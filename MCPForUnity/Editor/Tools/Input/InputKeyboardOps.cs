@@ -38,8 +38,8 @@ namespace MCPForUnity.Editor.Tools.Input
 
             int effectiveDuration = Math.Max(durationMs, 0);
             return InputHelpers.DelayedRelease(
-                pressAction: () => InputState.Change(keyControl, 1.0f),
-                releaseAction: () => InputState.Change(keyControl, 0.0f),
+                pressAction: () => InputHelpers.SetButtonState(keyControl, 1.0f),
+                releaseAction: () => InputHelpers.SetButtonState(keyControl, 0.0f),
                 durationMs: effectiveDuration,
                 successMessage: $"Key '{keyName}' pressed and released.",
                 successData: new { key = keyName, duration_ms = effectiveDuration }
@@ -63,7 +63,7 @@ namespace MCPForUnity.Editor.Tools.Input
                 return new ErrorResponse(
                     $"Unknown key: '{keyName}'. Examples: w, a, s, d, space, leftShift, escape, enter, tab, f1-f12.");
 
-            InputState.Change(keyControl, 1.0f);
+            InputHelpers.SetButtonState(keyControl, 1.0f);
             return new SuccessResponse($"Key '{keyName}' pressed down (held). Call key_up to release.",
                 new { key = keyName });
         }
@@ -85,7 +85,7 @@ namespace MCPForUnity.Editor.Tools.Input
                 return new ErrorResponse(
                     $"Unknown key: '{keyName}'. Examples: w, a, s, d, space, leftShift, escape, enter, tab, f1-f12.");
 
-            InputState.Change(keyControl, 0.0f);
+            InputHelpers.SetButtonState(keyControl, 0.0f);
             return new SuccessResponse($"Key '{keyName}' released.",
                 new { key = keyName });
         }

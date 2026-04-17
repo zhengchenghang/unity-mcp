@@ -37,6 +37,28 @@ namespace MCPForUnity.Editor.Tools.Input
         internal static Touchscreen EnsureTouchscreen() =>
             InputSystem.GetDevice<Touchscreen>() ?? InputSystem.AddDevice<Touchscreen>();
 
+        // ── 按钮状态设置 ────────────────────────────────────────
+
+        /// <summary>
+        /// 安全地改变按钮/键控件的状态。
+        /// InputState.Change 对 bitfield 控件（键盘按键、鼠标按钮、手柄按钮）会抛异常，
+        /// 需要通过 StateEvent + WriteValueIntoEvent 方式设置。
+        /// </summary>
+        internal static void SetButtonState(InputControl control, float value)
+        {
+            var device = control.device;
+            var buffer = StateEvent.From(device, out var eventPtr);
+            try
+            {
+                control.WriteValueIntoEvent(value, eventPtr);
+                InputSystem.QueueEvent(eventPtr);
+            }
+            finally
+            {
+                buffer.Dispose();
+            }
+        }
+
         // ── 键名解析 ──────────────────────────────────────────
 
         /// <summary>

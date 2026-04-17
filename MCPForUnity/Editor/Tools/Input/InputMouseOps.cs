@@ -55,8 +55,8 @@ namespace MCPForUnity.Editor.Tools.Input
 
             int effectiveDuration = Math.Max(durationMs, 0);
             return InputHelpers.DelayedRelease(
-                pressAction: () => InputState.Change(buttonControl, 1.0f),
-                releaseAction: () => InputState.Change(buttonControl, 0.0f),
+                pressAction: () => InputHelpers.SetButtonState(buttonControl, 1.0f),
+                releaseAction: () => InputHelpers.SetButtonState(buttonControl, 0.0f),
                 durationMs: effectiveDuration,
                 successMessage: $"Mouse '{buttonName}' button clicked.",
                 successData: new { button = buttonName, duration_ms = effectiveDuration }
@@ -81,7 +81,7 @@ namespace MCPForUnity.Editor.Tools.Input
             if (InputHelpers.TryParseVector2(@params, "position", out var pos))
                 InputState.Change(mouse.position, pos);
 
-            InputState.Change(buttonControl, 1.0f);
+            InputHelpers.SetButtonState(buttonControl, 1.0f);
             return new SuccessResponse($"Mouse '{buttonName}' button pressed down. Call mouse_up to release.",
                 new { button = buttonName });
         }
@@ -104,7 +104,7 @@ namespace MCPForUnity.Editor.Tools.Input
             if (InputHelpers.TryParseVector2(@params, "position", out var pos))
                 InputState.Change(mouse.position, pos);
 
-            InputState.Change(buttonControl, 0.0f);
+            InputHelpers.SetButtonState(buttonControl, 0.0f);
             return new SuccessResponse($"Mouse '{buttonName}' button released.",
                 new { button = buttonName });
         }

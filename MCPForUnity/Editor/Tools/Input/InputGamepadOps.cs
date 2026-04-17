@@ -40,8 +40,8 @@ namespace MCPForUnity.Editor.Tools.Input
 
             int effectiveDuration = Math.Max(durationMs, 0);
             return InputHelpers.DelayedRelease(
-                pressAction: () => InputState.Change(buttonControl, 1.0f),
-                releaseAction: () => InputState.Change(buttonControl, 0.0f),
+                pressAction: () => InputHelpers.SetButtonState(buttonControl, 1.0f),
+                releaseAction: () => InputHelpers.SetButtonState(buttonControl, 0.0f),
                 durationMs: effectiveDuration,
                 successMessage: $"Gamepad button '{buttonName}' pressed and released.",
                 successData: new { button = buttonName, duration_ms = effectiveDuration }
