@@ -40,7 +40,6 @@ namespace MCPForUnity.Editor.Windows
             { EditorPrefKeys.SetupCompleted, EditorPrefType.Bool },
             { EditorPrefKeys.SetupDismissed, EditorPrefType.Bool },
             { EditorPrefKeys.CustomToolRegistrationEnabled, EditorPrefType.Bool },
-            { EditorPrefKeys.TelemetryDisabled, EditorPrefType.Bool },
             { EditorPrefKeys.DevModeForceServerRefresh, EditorPrefType.Bool },
             { EditorPrefKeys.ProjectScopedToolsLocalHttp, EditorPrefType.Bool },
             { EditorPrefKeys.AllowLanHttpBind, EditorPrefType.Bool },
@@ -210,22 +209,18 @@ namespace MCPForUnity.Editor.Windows
             // Create items for existing prefs
             foreach (var key in allKeys)
             {
-                // Skip Customer UUID but show everything else that's defined
-                if (key != EditorPrefKeys.CustomerUuid)
+                // Apply search filter using OrdinalIgnoreCase for fewer allocations
+                if (!string.IsNullOrEmpty(filter) &&
+                    key.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
                 {
-                    // Apply search filter using OrdinalIgnoreCase for fewer allocations
-                    if (!string.IsNullOrEmpty(filter) &&
-                        key.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    var item = CreateEditorPrefItem(key);
-                    if (item != null)
-                    {
-                        currentPrefs.Add(item);
-                        prefsContainer.Add(CreateItemUI(item));
-                    }
+                var item = CreateEditorPrefItem(key);
+                if (item != null)
+                {
+                    currentPrefs.Add(item);
+                    prefsContainer.Add(CreateItemUI(item));
                 }
             }
         }

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TypeVar
 
 from fastmcp import Context, FastMCP
-from core.telemetry_decorator import telemetry_tool
 from core.logging_decorator import log_execution
 from utils.module_discovery import discover_modules
 from services.registry import get_registered_tools, TOOL_GROUPS, DEFAULT_ENABLED_GROUPS
@@ -56,11 +55,10 @@ def register_all_tools(mcp: FastMCP, *, project_scoped_tools: bool = True):
                 "Skipping execute_custom_tool registration (project-scoped tools disabled)")
             continue
 
-        # Apply decorators: logging -> telemetry -> mcp.tool
+        # Apply decorators: logging -> mcp.tool
         # Note: Parameter normalization (camelCase -> snake_case) is handled by
         # ParamNormalizerMiddleware before FastMCP validation
         wrapped = log_execution(tool_name, "Tool")(func)
-        wrapped = telemetry_tool(tool_name)(wrapped)
         wrapped = mcp.tool(
             name=tool_name, description=description, **kwargs)(wrapped)
         tool_info['func'] = wrapped

@@ -6,7 +6,7 @@ from transport.unity_instance_middleware import (
 from services.api_key_service import ApiKeyService
 from transport.legacy.unity_connection import get_unity_connection_pool, UnityConnectionPool
 from services.tools import register_all_tools
-from core.telemetry import record_milestone, record_telemetry, MilestoneType, RecordType, get_package_version
+from core.telemetry import get_package_version
 from services.resources import register_all_resources
 from transport.plugin_registry import PluginRegistry
 from transport.plugin_hub import PluginHub
@@ -29,7 +29,6 @@ if sys.platform == "win32":
 import logging
 from contextlib import asynccontextmanager
 import os
-import threading
 import time
 from typing import AsyncIterator, Any
 from urllib.parse import urlparse
@@ -103,15 +102,6 @@ try:
     # services.tools.run_tests) also write to the log file. Named loggers with
     # propagate=False won't double-log.
     logging.getLogger().addHandler(_fh)
-    # Also route telemetry logger to the same rotating file and normal level
-    try:
-        tlog = logging.getLogger("unity-mcp-telemetry")
-        tlog.setLevel(getattr(logging, config.log_level))
-        tlog.addHandler(_fh)
-        tlog.propagate = False  # Prevent double logging for telemetry too
-    except Exception as exc:
-        # Never let logging setup break startup
-        logger.debug("Failed to configure telemetry logger", exc_info=exc)
 except Exception as exc:
     # Never let logging setup break startup
     logger.debug("Failed to configure main logger file handler", exc_info=exc)
@@ -124,15 +114,6 @@ for noisy in ("httpx", "urllib3", "mcp.server.lowlevel.server"):
     except Exception:
         pass
 
-# Import telemetry only after logging is configured to ensure its logs use stderr and proper levels
-# Ensure a slightly higher telemetry timeout unless explicitly overridden by env
-try:
-
-    # Ensure generous timeout unless explicitly overridden by env
-    if not os.environ.get("UNITY_MCP_TELEMETRY_TIMEOUT"):
-        os.environ["UNITY_MCP_TELEMETRY_TIMEOUT"] = "5.0"
-except Exception:
-    pass
 
 # Global connection pool
 _unity_connection_pool: UnityConnectionPool | None = None
@@ -170,22 +151,6 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
         _plugin_registry = PluginRegistry()
         loop = asyncio.get_running_loop()
         PluginHub.configure(_plugin_registry, loop, mcp=server)
-
-    # Record server startup telemetry
-    start_time = time.time()
-    start_clk = time.perf_counter()
-    # Defer initial telemetry by 1s to avoid stdio handshake interference
-
-    def _emit_startup():
-        try:
-            record_telemetry(RecordType.STARTUP, {
-                "server_version": _server_version,
-                "startup_time": start_time,
-            })
-            record_milestone(MilestoneType.FIRST_STARTUP)
-        except Exception:
-            logger.debug("Deferred startup telemetry failed", exc_info=True)
-    threading.Timer(1.0, _emit_startup).start()
 
     try:
         skip_connect = os.environ.get(
@@ -233,15 +198,6 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
                             logger.debug(
                                 "Stdio startup: tool visibility sync failed: %s", sync_exc)
 
-                    # Record successful Unity connection (deferred)
-                    threading.Timer(1.0, lambda: record_telemetry(
-                        RecordType.UNITY_CONNECTION,
-                        {
-                            "status": "connected",
-                            "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-                            "instance_count": len(instances)
-                        }
-                    )).start()
                 except Exception as e:
                     logger.warning(
                         f"Could not connect to default Unity instance: {e}")
@@ -250,28 +206,8 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
 
     except ConnectionError as e:
         logger.warning(f"Could not connect to Unity on startup: {e}")
-
-        # Record connection failure (deferred)
-        _err_msg = str(e)[:200]
-        threading.Timer(1.0, lambda: record_telemetry(
-            RecordType.UNITY_CONNECTION,
-            {
-                "status": "failed",
-                "error": _err_msg,
-                "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-            }
-        )).start()
     except Exception as e:
         logger.warning(f"Unexpected error connecting to Unity on startup: {e}")
-        _err_msg = str(e)[:200]
-        threading.Timer(1.0, lambda: record_telemetry(
-            RecordType.UNITY_CONNECTION,
-            {
-                "status": "failed",
-                "error": _err_msg,
-                "connection_time_ms": (time.perf_counter() - start_clk) * 1000,
-            }
-        )).start()
 
     try:
         # Yield shared state for lifespan consumers (e.g., middleware)
@@ -655,7 +591,6 @@ def main():
 Environment Variables:
   UNITY_MCP_DEFAULT_INSTANCE   Default Unity instance to target (project name, hash, or 'Name@hash')
   UNITY_MCP_SKIP_STARTUP_CONNECT   Skip initial Unity connection attempt (set to 1/true/yes/on)
-  UNITY_MCP_TELEMETRY_ENABLED   Enable telemetry (set to 1/true/yes/on)
   UNITY_MCP_TRANSPORT   Transport protocol: stdio or http (default: stdio)
   UNITY_MCP_HTTP_URL   HTTP server URL (default: http://127.0.0.1:8080)
   UNITY_MCP_HTTP_HOST   HTTP server host (overrides URL host)

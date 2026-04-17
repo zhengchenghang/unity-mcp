@@ -67,22 +67,6 @@ def test_every_action_forwards_to_unity(mock_unity, action_name):
     assert mock_unity["params"]["action"] == action_name
 
 
-# ── Python-only actions ──────────────────────────────────────────────
-
-
-def test_telemetry_status_handled_python_side(mock_unity):
-    result = asyncio.run(manage_editor(SimpleNamespace(), action="telemetry_status"))
-    assert result["success"] is True
-    assert "telemetry_enabled" in result
-    assert "params" not in mock_unity
-
-
-def test_telemetry_ping_handled_python_side(mock_unity):
-    result = asyncio.run(manage_editor(SimpleNamespace(), action="telemetry_ping"))
-    assert result["success"] is True
-    assert "params" not in mock_unity
-
-
 # ── None params omitted ─────────────────────────────────────────────
 
 

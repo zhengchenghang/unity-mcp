@@ -13,7 +13,6 @@ from starlette.responses import JSONResponse
 from core.config import config
 from models.models import MCPResponse, ToolDefinitionModel, ToolParameterModel
 from core.logging_decorator import log_execution
-from core.telemetry_decorator import telemetry_tool
 from transport.unity_transport import send_with_unity_instance
 from transport.legacy.unity_connection import (
     async_send_command_with_retry,
@@ -354,7 +353,6 @@ class CustomToolService:
 
         handler = self._build_global_tool_handler(definition)
         wrapped = log_execution(definition.name, "Tool")(handler)
-        wrapped = telemetry_tool(definition.name)(wrapped)
 
         try:
             wrapped = self._mcp.tool(

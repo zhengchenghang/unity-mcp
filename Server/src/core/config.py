@@ -61,10 +61,6 @@ class ServerConfig:
     result_cache_ttl: float = 300.0        # seconds before cached entries expire
     result_cache_max_entries: int = 50     # max entries per session
 
-    # Telemetry settings
-    telemetry_enabled: bool = True
-    # Align with telemetry.py default Cloud Run endpoint
-    telemetry_endpoint: str = "https://api-prod.coplay.dev/telemetry/events"
 
 
 # Create a global config instance

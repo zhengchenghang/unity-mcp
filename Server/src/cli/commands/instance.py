@@ -82,7 +82,7 @@ def current_instance():
     """
     config = get_config()
 
-    # The current instance is typically shown in telemetry or needs to be tracked
+    # Show the configured instance
     # For now, we can show the configured instance from CLI options
     if config.unity_instance:
         click.echo(f"Configured instance: {config.unity_instance}")

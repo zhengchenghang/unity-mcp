@@ -85,13 +85,10 @@ namespace MCPForUnity.Editor.Services.Transport.Transports
                 currentUnityPort = PortManager.GetPortWithFallback();
                 Start();
                 isAutoConnectMode = true;
-
-                TelemetryHelper.RecordBridgeStartup();
             }
             catch (Exception ex)
             {
                 McpLog.Error($"Auto-connect failed: {ex.Message}");
-                TelemetryHelper.RecordBridgeConnection(false, ex.Message);
                 throw;
             }
         }
