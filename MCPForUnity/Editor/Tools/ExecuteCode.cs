@@ -268,9 +268,6 @@ namespace MCPForUnity.Editor.Tools
 
         // ──────────────────── CodeDom compiler ────────────────────
 
-        // Threshold for switching to response file (Windows cmd line limit is ~32K)
-        private const int MaxCommandLineLength = 25000;
-
         private static Assembly CodeDomCompile(string source, string[] assemblyPaths, out List<string> errors)
         {
             errors = new List<string>();
@@ -278,40 +275,35 @@ namespace MCPForUnity.Editor.Tools
             // CodeDom needs the netstandard-aware filtered paths
             var filtered = FilterAssemblyPathsForCodeDom(assemblyPaths);
 
-            // Estimate command line length: each ref adds /r:"path" + space
-            int estimatedCmdLen = 0;
-            foreach (var path in filtered)
-                estimatedCmdLen += path.Length + 6;
+            // CSharpCodeProvider turns every ReferencedAssemblies entry into a literal /r:"..." flag
+            // on the csc command line. Projects with ~100+ asmdefs blow past Windows' 32 KB
+            // CreateProcess argument limit and fail with "The filename or extension is too long."
+            // Route references through a response file (@responsefile is supported by both mcs and
+            // Roslyn csc) so we pass exactly one short argument regardless of reference count.
+            string responseFilePath = Path.Combine(Path.GetTempPath(), $"mcp-codedom-{Guid.NewGuid():N}.rsp");
 
-            string rspFile = null;
-
-            using (var provider = new CSharpCodeProvider())
+            try
             {
-                var parameters = new CompilerParameters
-                {
-                    GenerateInMemory = true,
-                    GenerateExecutable = false,
-                    TreatWarningsAsErrors = false,
-                };
-
-                // Use a response file to avoid Windows command line length limit
-                if (estimatedCmdLen > MaxCommandLineLength)
-                {
-                    rspFile = Path.Combine(Path.GetTempPath(), $"mcp_codedom_{Guid.NewGuid():N}.rsp");
-                    var sb = new StringBuilder();
-                    foreach (var path in filtered)
-                        sb.AppendLine($"/r:\"{path}\"");
-                    File.WriteAllText(rspFile, sb.ToString());
-                    parameters.CompilerOptions = $"@\"{rspFile}\"";
-                }
-                else
+                using (var writer = new StreamWriter(responseFilePath, append: false, Encoding.UTF8))
                 {
                     foreach (var path in filtered)
-                        parameters.ReferencedAssemblies.Add(path);
+                    {
+                        writer.Write("/r:\"");
+                        writer.Write(path);
+                        writer.WriteLine("\"");
+                    }
                 }
 
-                try
+                using (var provider = new CSharpCodeProvider())
                 {
+                    var parameters = new CompilerParameters
+                    {
+                        GenerateInMemory = true,
+                        GenerateExecutable = false,
+                        TreatWarningsAsErrors = false,
+                        CompilerOptions = "@\"" + responseFilePath + "\"",
+                    };
+
                     var results = provider.CompileAssemblyFromSource(parameters, source);
 
                     if (results.Errors.HasErrors)
@@ -329,13 +321,11 @@ namespace MCPForUnity.Editor.Tools
 
                     return results.CompiledAssembly;
                 }
-                finally
-                {
-                    if (rspFile != null)
-                    {
-                        try { File.Delete(rspFile); } catch { }
-                    }
-                }
+            }
+            finally
+            {
+                try { if (File.Exists(responseFilePath)) File.Delete(responseFilePath); }
+                catch { /* best effort */ }
             }
         }
 
@@ -705,7 +695,13 @@ namespace MCPForUnity.Editor.Tools
             }
             catch (Exception e)
             {
-                errors.Add($"Roslyn compilation error: {e.Message}");
+                // Walk to the deepest cause: TargetInvocationException (and friends) wrap the real
+                // failure inside .InnerException, and reporting only e.Message hides everything
+                // useful (e.g. a missing transitive dep manifests as the generic "Exception has been
+                // thrown by the target of an invocation.").
+                Exception root = e;
+                while (root.InnerException != null) root = root.InnerException;
+                errors.Add($"Roslyn compilation error: {root.GetType().Name}: {root.Message}");
                 return null;
             }
         }
