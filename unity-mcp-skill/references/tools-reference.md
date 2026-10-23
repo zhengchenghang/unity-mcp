@@ -27,6 +27,7 @@ Each section names the tool's group when it is not `core`. A tool outside `core`
 - [ProBuilder Tools](#probuilder-tools)
 - [Profiler Tools](#profiler-tools)
 - [Docs Tools](#docs-tools)
+- [Project Settings Tools](#project-settings-tools)
 - [Animation Tools](#animation-tools)
 - [VFX Tools](#vfx-tools)
 - [Scripting Extension Tools](#scripting-extension-tools)
@@ -1510,8 +1511,17 @@ Unity Profiler session control, counter reads, memory snapshots, and Frame Debug
 | `search_path` | string | No | Search directory for memory_list_snapshots |
 | `snapshot_a` | string | For memory_compare_snapshots | First snapshot file path |
 | `snapshot_b` | string | For memory_compare_snapshots | Second snapshot file path |
-| `page_size` | int | No | Page size for frame_debugger_get_events (default 50) |
-| `cursor` | int | No | Cursor offset for frame_debugger_get_events |
+| `page_size` | int | No | Page size for paged actions (default 50) |
+| `cursor` | int | No | Cursor offset for paged actions |
+| `file_path` | string | For load_profile | Path to `.raw` profiler recording file |
+| `frame_index` | int | For get_frame_hierarchy | Frame index to inspect |
+| `frame_start` | int | No | Start frame for get_profile_summary / get_hotspots (default: first frame) |
+| `frame_end` | int | No | End frame for get_profile_summary / get_hotspots (default: last frame) |
+| `thread_index` | int | No | Thread index for get_frame_hierarchy / get_hotspots (0 = main thread) |
+| `depth` | int | No | Max hierarchy depth for get_frame_hierarchy (default 5) |
+| `min_time_ms` | float | No | Filter threshold in ms for get_frame_hierarchy |
+| `top_n` | int | No | Number of top functions for get_hotspots (default 20, max 100) |
+| `sort_by` | string | No | Sort column: `total_time`, `self_time`, `calls`, `gc_alloc` |
 
 **Action groups:**
 
@@ -1519,7 +1529,14 @@ Unity Profiler session control, counter reads, memory snapshots, and Frame Debug
 - **Counters:** `get_frame_timing`, `get_counters`, `get_object_memory`
 - **Memory Snapshot:** `memory_take_snapshot`, `memory_list_snapshots`, `memory_compare_snapshots` (requires `com.unity.memoryprofiler`)
 - **Frame Debugger:** `frame_debugger_enable`, `frame_debugger_disable`, `frame_debugger_get_events`
+- **Profile Data Analysis:** `load_profile`, `get_profile_summary`, `get_frame_hierarchy`, `get_hotspots`
 - **Utility:** `ping`
+
+**Important notes:**
+- `profiler_status` checks the scripting API flag (`UnityEngine.Profiling.Profiler.enabled`), NOT the Profiler window state. The Profiler window can have recorded data even when status shows `enabled=false`.
+- **Profile Data Analysis actions read whatever data is currently loaded in the Profiler window** — you do NOT need to call `profiler_start` first. If the user already recorded data via the Profiler window, skip straight to `get_profile_summary` / `get_hotspots` / `get_frame_hierarchy`.
+- To analyze a `.raw` file, call `load_profile` first to load it into the Profiler window.
+- `get_hotspots` has a max frame range of 300 frames to avoid stalls. Narrow the range if needed.
 
 ```python
 # Check profiler availability
@@ -1558,6 +1575,18 @@ manage_profiler(action="memory_compare_snapshots", snapshot_a="Assets/Snapshots/
 manage_profiler(action="frame_debugger_enable")
 manage_profiler(action="frame_debugger_get_events", page_size=20, cursor=0)
 manage_profiler(action="frame_debugger_disable")
+
+# --- Profile Data Analysis ---
+# Analyze data already in the Profiler window (no profiler_start needed)
+manage_profiler(action="get_profile_summary")
+manage_profiler(action="get_hotspots", top_n=10, sort_by="self_time")
+manage_profiler(action="get_frame_hierarchy", frame_index=42, depth=5, min_time_ms=0.5)
+
+# Load a .raw recording file first, then analyze
+manage_profiler(action="load_profile", file_path="C:/Projects/MyGame/profiler_capture.raw")
+manage_profiler(action="get_profile_summary", frame_start=100, frame_end=200, page_size=20)
+manage_profiler(action="get_hotspots", frame_start=100, frame_end=200, top_n=20, sort_by="gc_alloc")
+manage_profiler(action="get_frame_hierarchy", frame_index=150, thread_index=0, depth=8, min_time_ms=0.1, sort_by="self_time")
 ```
 
 ---
@@ -1652,6 +1681,56 @@ unity_docs(action="lookup", query="VolumeProfile",
 
 ---
 
+## Project Settings Tools
+
+### `manage_project_settings`
+
+Read and write Unity ProjectSettings by category. Extensible category system — add new categories by implementing `ICategoryHandler` on the C# side.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | `list_categories`, `list_properties`, `get_settings`, `set_settings` |
+| `category` | string | For get/set/list_properties | Settings category name (e.g. `"version_control"`) |
+| `settings` | dict | For set_settings | Key-value pairs to write |
+
+**Actions:**
+
+- **`list_categories`**: List all supported settings categories with descriptions and property counts. No extra parameters needed.
+- **`list_properties`**: List all properties for a category, including type, valid values, and current value.
+- **`get_settings`**: Read all settings for a category. Returns current values.
+- **`set_settings`**: Write settings. Pass a `settings` dict with property names as keys. Validates all keys before applying any changes — unknown keys cause an error with no modifications.
+
+### Category: `version_control`
+
+| Property | Type | Valid Values | Description |
+|----------|------|-------------|-------------|
+| `mode` | string | `"Visible Meta Files"`, `"Hidden Meta Files"`, `"Perforce"`, `"PlasticSCM"` | Version control mode |
+| `serialization_mode` | enum | `"ForceText"`, `"ForceBinary"`, `"Mixed"` | Asset serialization mode |
+
+```python
+# List available categories
+manage_project_settings(action="list_categories")
+
+# List properties with current values
+manage_project_settings(action="list_properties", category="version_control")
+
+# Read current version control settings
+manage_project_settings(action="get_settings", category="version_control")
+
+# Set VCS mode to Perforce
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"mode": "Perforce"})
+
+# Set asset serialization to Force Text
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"serialization_mode": "ForceText"})
+
+# Set multiple properties at once
+manage_project_settings(action="set_settings", category="version_control",
+                        settings={"mode": "Visible Meta Files", "serialization_mode": "ForceText"})
+```
 ## Animation Tools
 
 Group: `animation`.

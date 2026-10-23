@@ -26,6 +26,7 @@ from services.result_cache import ResultCache, _get_session_key
     annotations=ToolAnnotations(
         title="Query Result",
         readOnlyHint=True,
+        destructiveHint=False,
     ),
 )
 async def query_result(

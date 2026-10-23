@@ -54,12 +54,12 @@
       "description": "Delete C# scripts"
     },
     {
-      "name": "execute_custom_tool",
-      "description": "Execute custom Unity Editor tools registered by the project"
-    },
-    {
       "name": "execute_code",
       "description": "Execute arbitrary C# code inside the Unity Editor with access to all Unity APIs"
+    },
+    {
+      "name": "execute_custom_tool",
+      "description": "Execute custom Unity Editor tools registered by the project"
     },
     {
       "name": "execute_menu_item",
@@ -114,6 +114,10 @@
       "description": "Manage player builds: trigger builds, switch platforms, configure settings, batch builds"
     },
     {
+      "name": "manage_camera",
+      "description": "Manage cameras (Unity Camera + Cinemachine) with presets, pipelines, and blending"
+    },
+    {
       "name": "manage_components",
       "description": "Add, remove, and configure GameObject components"
     },
@@ -126,12 +130,12 @@
       "description": "Create, modify, transform, and delete GameObjects"
     },
     {
-      "name": "manage_camera",
-      "description": "Manage cameras (Unity Camera + Cinemachine) with presets, pipelines, and blending"
-    },
-    {
       "name": "manage_graphics",
       "description": "Manage rendering graphics: volumes, post-processing, light baking, rendering stats, pipeline settings, and URP renderer features"
+    },
+    {
+      "name": "manage_input",
+      "description": "Simulate input in Unity Play Mode via the Input System (keyboard, mouse, gamepad)"
     },
     {
       "name": "manage_material",
@@ -156,6 +160,10 @@
     {
       "name": "manage_profiler",
       "description": "Unity Profiler session control, counter reads, memory snapshots, and Frame Debugger (group: profiling)"
+    },
+    {
+      "name": "manage_project_settings",
+      "description": "Read and write Unity ProjectSettings by category (version_control)"
     },
     {
       "name": "manage_scene",
@@ -196,6 +204,10 @@
     {
       "name": "manage_vfx",
       "description": "Manage Visual Effects, particle systems, and trails"
+    },
+    {
+      "name": "query_result",
+      "description": "Query cached tool results by key: get, grep, list"
     },
     {
       "name": "read_console",

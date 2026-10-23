@@ -144,6 +144,31 @@ read_console(
 # - blocking_reasons: Why tools might fail
 ```
 
+### 6. Handle Large Results with `query_result`
+
+Some tools (scene hierarchy, asset search, profiler data, console logs, etc.) may return large results that consume many tokens. When a response exceeds ~4000 chars, it is automatically cached and a summary with a `_cache` key is returned instead.
+
+```python
+# 1. Call a tool that may return large data
+result = manage_scene(action="get_hierarchy")
+# → Returns summary + _cache.key = "cr_a1b2c3d4"
+
+# 2. Query the cached full result as needed
+query_result(action="grep", key="cr_a1b2c3d4", pattern="Camera")     # Regex search
+query_result(action="get", key="cr_a1b2c3d4", start=0, end=20)       # Slice by index
+query_result(action="get", key="cr_a1b2c3d4", path="data.nodes")     # Navigate nested fields
+query_result(action="keys")                                            # List all cached keys
+
+# 3. Cache auto-expires after 5 minutes; manual cleanup is optional
+query_result(action="delete", key="cr_a1b2c3d4")
+```
+
+**Best practices:**
+- Read the summary first; only `query_result` when you need specific details
+- Use `grep` to search for specific content instead of fetching everything
+- Cache has a 5-minute TTL; re-run the original tool if expired
+- Tools with caching: `manage_scene` (get_hierarchy, validate), `find_gameobjects`, `manage_asset` (search), `manage_profiler` (get_frame_hierarchy, get_hotspots, get_profile_summary), `read_console`, `execute_code`, `manage_physics` (validate)
+
 ## Parameter Type Conventions
 
 These are common patterns, not strict guarantees. `manage_components.set_property` payload shapes can vary by component/property; if a template fails, inspect the component resource payload and adjust.
@@ -197,7 +222,9 @@ uri="file:///full/path/to/file.cs"
 | **Physics** | `manage_physics` | Manage 3D and 2D physics (21 actions). Settings, collision matrix, materials, joints (14 types). Queries: `raycast`, `raycast_all`, `linecast`, `shapecast` (sphere/box/capsule sweep), `overlap`. Forces: `apply_force` (AddForce/AddTorque/AddExplosionForce with ForceMode). Rigidbody: `get_rigidbody`, `configure_rigidbody` (mass, drag, gravity, constraints, collision detection). Validation: scene-wide checks. Simulation: `simulate_step` in edit mode. See [tools-reference.md](references/tools-reference.md#physics-tools). |
 | **ProBuilder** | `manage_probuilder` | 3D modeling, mesh editing, complex geometry. **When `com.unity.probuilder` is installed, prefer ProBuilder shapes over primitive GameObjects** for editable geometry, multi-material faces, or complex shapes. Supports 12 shape types, face/edge/vertex editing, smoothing, and per-face materials. See [ProBuilder Guide](references/probuilder-guide.md). |
 | **UI** | `manage_ui`, `batch_execute` with `manage_gameobject` + `manage_components` | **UI Toolkit**: Use `manage_ui` to create UXML/USS files, attach UIDocument, inspect visual trees. **uGUI (Canvas)**: Use `batch_execute` for Canvas, Panel, Button, Text, Slider, Toggle, Input Field. **Read `mcpforunity://project/info` first** to detect uGUI/TMP/Input System/UI Toolkit availability. (see [UI workflows](references/workflows.md#ui-creation-workflows)) |
+| **Profiling** | `manage_profiler` | Profiler session control, counters, memory snapshots, Frame Debugger, and profile data analysis. **Profile Data Analysis can read data already in the Profiler window** — no `profiler_start` needed. Use `get_profile_summary` / `get_hotspots` / `get_frame_hierarchy` to analyze. Load `.raw` files with `load_profile`. Note: `profiler_status` checks the scripting API flag, not the Profiler window state. Group: `profiling` (enable via `manage_tools`). See [tools-reference.md](references/tools-reference.md#profiler-tools) and [workflows.md](references/workflows.md#profiling-workflows). |
 | **Docs** | `unity_reflect`, `unity_docs` | API verification and documentation lookup. **`unity_reflect`** inspects live C# APIs via reflection (requires Unity connection): `search` types across assemblies, `get_type` for member summary, `get_member` for full signatures. **`unity_docs`** fetches official docs from docs.unity3d.com (no Unity connection needed): `get_doc` (ScriptReference), `get_manual` (Manual pages), `get_package_doc` (package docs), `lookup` (parallel search all sources + project assets). **Trust hierarchy: reflection > project assets > docs.** Workflow: `unity_reflect` search -> get_type -> get_member -> `unity_docs` lookup. See [tools-reference.md](references/tools-reference.md#docs-tools). |
+| **Project Settings** | `manage_project_settings` | Read and write Unity ProjectSettings by category. Extensible category system — currently supports `version_control` (VCS mode, asset serialization). Actions: `list_categories`, `list_properties`, `get_settings`, `set_settings`. See [tools-reference.md](references/tools-reference.md#project-settings-tools). |
 | **More** | `manage_material`, `manage_texture`, `manage_shader`, `manage_vfx`, `manage_profiler`, `execute_code`, `manage_scriptable_object`, `generate_image`, `generate_model`, `generate_audio`, `import_model`, `import_model_file`, `blender_bridge` | Materials; textures, shaders and VFX (`vfx` group); profiling (`profiling`); in-editor C# and ScriptableObjects (`scripting_ext`); AI asset generation, Sketchfab and on-disk model import, Blender (`asset_gen`). Every tool has a section in [tools-reference.md](references/tools-reference.md). |
 
 ## Common Workflows

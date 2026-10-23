@@ -39,6 +39,8 @@ READ_ONLY = {
     "unity_docs",
     "unity_reflect",
     "validate_script",
+    # Session-local cache of other tools' results; 'delete' only drops cache entries.
+    "query_result",
 }
 
 NON_DESTRUCTIVE = {

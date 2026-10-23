@@ -1979,6 +1979,119 @@ unity_reflect(action="search", query="InputAction", scope="packages")
 
 ---
 
+## Profiling Workflows
+
+### Analyzing Existing Profiler Data (Most Common)
+
+When the user has already recorded data in the Profiler window (via manual Record button), you can analyze it directly — **no need to call `profiler_start`**.
+
+> **Important:** `profiler_status` checks the scripting API flag, NOT the Profiler window state. It may show `enabled=false` even when the Profiler window has recorded data. Skip `profiler_status` and go straight to analysis.
+
+```python
+# 1. Get an overview of all recorded frames
+manage_profiler(action="get_profile_summary")
+# → Returns: frame count, avg/max/min frame times, slow frame count, per-frame timing
+
+# 2. Find the top performance bottlenecks across all frames
+manage_profiler(action="get_hotspots", top_n=10, sort_by="self_time")
+# → Returns: top functions ranked by self time, with avg/max times and GC alloc
+
+# 3. Drill into a specific slow frame
+manage_profiler(action="get_frame_hierarchy", frame_index=42, depth=5, min_time_ms=0.5)
+# → Returns: function call tree with timing, GC alloc, and call counts
+```
+
+### Full MCP-Driven Profiling Flow
+
+When starting a profiling session entirely through MCP:
+
+```python
+# 1. Enable the profiling tool group (one-time setup)
+manage_tools(action="enable", groups=["profiling"])
+
+# 2. Start profiling with recording to file
+manage_profiler(action="profiler_start", log_file="Assets/Profiling/capture.raw", enable_callstacks=True)
+
+# 3. Run the game / perform the action you want to profile
+# (user plays the game, or use manage_editor to enter Play mode)
+
+# 4. Stop profiling
+manage_profiler(action="profiler_stop")
+
+# 5. Load the recording and analyze
+manage_profiler(action="load_profile", file_path="Assets/Profiling/capture.raw")
+manage_profiler(action="get_profile_summary")
+manage_profiler(action="get_hotspots", top_n=20, sort_by="self_time")
+```
+
+### Performance Hotspot Investigation
+
+A step-by-step workflow to narrow down performance issues:
+
+```python
+# Step 1: Overview — identify if there are slow frames
+manage_profiler(action="get_profile_summary")
+# Look at: slow_frame_count, max_frame_time_ms, max_frame_index
+
+# Step 2: Find hotspots — which functions cost the most?
+manage_profiler(action="get_hotspots", top_n=15, sort_by="self_time")
+# Sort by self_time to find functions doing the most work themselves
+# Sort by gc_alloc to find GC allocation hotspots
+
+# Step 3: Inspect the worst frame — what's the call tree?
+manage_profiler(action="get_frame_hierarchy", frame_index=<max_frame_index>, depth=8, min_time_ms=0.1)
+# Use min_time_ms to filter out noise, increase depth for deeper call stacks
+
+# Step 4: Check a specific thread (e.g., render thread)
+manage_profiler(action="get_frame_hierarchy", frame_index=<max_frame_index>, thread_index=1, depth=5)
+
+# Step 5: Narrow hotspot analysis to a specific frame range
+manage_profiler(action="get_hotspots", frame_start=100, frame_end=200, top_n=10, sort_by="gc_alloc")
+# Max 300 frames per get_hotspots call — narrow the range if needed
+```
+
+### Memory Profiling (Snapshot Comparison)
+
+Requires `com.unity.memoryprofiler` package:
+
+```python
+# Take baseline snapshot
+manage_profiler(action="memory_take_snapshot", snapshot_path="Assets/Snapshots/before.snap")
+
+# ... perform actions that may leak memory ...
+
+# Take second snapshot
+manage_profiler(action="memory_take_snapshot", snapshot_path="Assets/Snapshots/after.snap")
+
+# Compare (file-level metadata; detailed object comparison requires the Memory Profiler window)
+manage_profiler(action="memory_compare_snapshots",
+    snapshot_a="Assets/Snapshots/before.snap",
+    snapshot_b="Assets/Snapshots/after.snap")
+
+# List all available snapshots
+manage_profiler(action="memory_list_snapshots")
+```
+
+### Live Counter Monitoring
+
+Read real-time performance counters without recording:
+
+```python
+# Read rendering counters
+manage_profiler(action="get_counters", category="Render")
+
+# Read specific memory counters
+manage_profiler(action="get_counters", category="Memory", counters=["Total Used Memory", "GC Used Memory"])
+
+# Read frame timing (CPU/GPU split)
+manage_profiler(action="get_frame_timing")
+
+# Check memory of a specific object
+manage_profiler(action="get_object_memory", object_path="Player/Mesh")
+```
+
+---
+
 ## Batch Operations
 
 ### Batch Discovery (Multi-Search)
