@@ -1,4 +1,5 @@
 using System;
+using MCPForUnity.Editor.CompatCore;
 using MCPForUnity.Editor.Helpers;
 using MCPForUnity.Editor.Services;
 using Newtonsoft.Json.Linq;
@@ -51,49 +52,11 @@ namespace MCPForUnity.Editor.Tools
             {
                 // Play Mode Control
                 case "play":
-                    try
-                    {
-                        if (!EditorApplication.isPlaying)
-                        {
-                            EditorApplication.isPlaying = true;
-                            return new SuccessResponse("Entered play mode.");
-                        }
-                        return new SuccessResponse("Already in play mode.");
-                    }
-                    catch (Exception e)
-                    {
-                        return new ErrorResponse($"Error entering play mode: {e.Message}");
-                    }
+                    return ToMcpResponse(PlayModeCapability.RequestPlay());
                 case "pause":
-                    try
-                    {
-                        if (EditorApplication.isPlaying)
-                        {
-                            EditorApplication.isPaused = !EditorApplication.isPaused;
-                            return new SuccessResponse(
-                                EditorApplication.isPaused ? "Game paused." : "Game resumed."
-                            );
-                        }
-                        return new ErrorResponse("Cannot pause/resume: Not in play mode.");
-                    }
-                    catch (Exception e)
-                    {
-                        return new ErrorResponse($"Error pausing/resuming game: {e.Message}");
-                    }
+                    return ToMcpResponse(PlayModeCapability.RequestPause());
                 case "stop":
-                    try
-                    {
-                        if (EditorApplication.isPlaying)
-                        {
-                            EditorApplication.isPlaying = false;
-                            return new SuccessResponse("Exited play mode.");
-                        }
-                        return new SuccessResponse("Already stopped (not in play mode).");
-                    }
-                    catch (Exception e)
-                    {
-                        return new ErrorResponse($"Error stopping play mode: {e.Message}");
-                    }
+                    return ToMcpResponse(PlayModeCapability.RequestStop());
 
                 // Tool Control
                 case "set_active_tool":
@@ -460,6 +423,23 @@ namespace MCPForUnity.Editor.Tools
                 McpLog.Error($"[ManageEditor] Error accessing TagManager.asset: {e.Message}");
                 return null;
             }
+        }
+
+        private static object ToMcpResponse(PlayModeCapability.PlayModeOperationResult result)
+        {
+            if (result == null)
+                return new ErrorResponse("Play mode capability returned null.");
+
+            var payload = new
+            {
+                code = result.Code,
+                isPlaying = result.State?.IsPlaying ?? false,
+                isPaused = result.State?.IsPaused ?? false,
+            };
+
+            return result.Success
+                ? new SuccessResponse(result.Message, payload)
+                : new ErrorResponse(result.Message, payload);
         }
 
         // --- Example Implementations for Settings ---

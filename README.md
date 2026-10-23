@@ -71,6 +71,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Branch off `beta`, not `main`. The full 
 
 ## Advanced
 
+- **Internal UnityMCPBridge compatibility** — [Bridge compatibility workflow](docs/development/UNITY_MCP_BRIDGE_COMPAT.md)
 - **Multiple Unity instances** — [Multi-Instance Routing](https://coplaydev.github.io/unity-mcp/guides/multi-instance)
 - **Tool groups (vfx / animation / ui / testing / etc.)** — [Tool Groups](https://coplaydev.github.io/unity-mcp/guides/tool-groups)
 - **v10 asset generation and upgrade notes** — [v10 Migration](https://coplaydev.github.io/unity-mcp/migrations/v10)
